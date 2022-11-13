@@ -32,7 +32,7 @@ executable deviceip-haskell
     build-depends:    
         base ^>=4.14.3.0,
         req >=3.13.0,
-        aeson >= 2.1.1,
+        aeson >= 2.1.1.0,
         bytestring >= 0.10.12,
         text >= 1.2.4.1,
         HandsomeSoup >= 0.4.2,

@@ -5,6 +5,23 @@
 
 module Main where
 
+import Control.Monad.IO.Class (MonadIO (liftIO))
+import qualified Crypto.Hash.SHA256 as SHA256
+import Data.Aeson ((.=), FromJSON (parseJSON), ToJSON (toEncoding), genericToEncoding, defaultOptions, Options(..), genericParseJSON, decode, withObject, (.:))
+import Data.Aeson.Types (object)
+import Data.ByteString as B ( ByteString )
+import qualified Data.ByteString.Base64 as Base64 ( encode )
+import Data.ByteString.Builder (toLazyByteString, byteStringHex)
+import qualified Data.ByteString.Char8 as BS (pack, unpack)
+import qualified Data.ByteString.Lazy.Char8 as BL (pack)
+import Data.ByteString.Lazy (toStrict)
+import Data.Char (toUpper)
+import Data.List (isPrefixOf, isSuffixOf, find, intercalate)
+import Data.Text as T ( unpack, pack )
+import Data.Text.Encoding as T ( decodeUtf8, encodeUtf8 )
+import Data.Text.IO as T ()
+import GHC.Generics ( Generic )
+import qualified Network.HTTP.Client as L ( CookieJar )
 import Network.HTTP.Req
     ( bsResponse,
       defaultHttpConfig,
@@ -16,27 +33,9 @@ import Network.HTTP.Req
       runReq,
       GET(GET),
       NoReqBody(NoReqBody), responseCookieJar, (/:), POST (POST), ReqBodyJson (ReqBodyJson), cookieJar )
-import Control.Monad.IO.Class (MonadIO (liftIO))
-import Data.ByteString as B ( ByteString )
-import qualified Data.ByteString.Char8 as BS (pack, unpack)
-import qualified Data.ByteString.Lazy.Char8 as BL (pack)
-import Data.List (isPrefixOf, isSuffixOf, find, intercalate)
-import Data.Text as T ( unpack, pack )
-import Data.Text.Encoding as T ( decodeUtf8, encodeUtf8 )
-import Data.Text.IO as T ()
-import qualified Network.HTTP.Client as L ( CookieJar )
-import qualified Crypto.Hash.SHA256 as SHA256
-import qualified Data.ByteString.Base64 as Base64 ( encode )
-import GHC.Generics ( Generic )
-
+import System.Environment (getEnv)
 import Text.HandsomeSoup ( (!), css, parseHtml )
 import Text.XML.HXT.Core ( (>>>), runX )
-import System.Environment (getEnv)
-import Data.ByteString.Builder (toLazyByteString, byteStringHex)
-import Data.ByteString.Lazy (toStrict)
-import Data.Aeson.Types (object)
-import Data.Aeson ((.=), FromJSON (parseJSON), ToJSON (toEncoding), genericToEncoding, defaultOptions, Options(..), genericParseJSON, decode, withObject, (.:))
-import Data.Char (toUpper)
 
 byteStringToString :: ByteString -> String
 byteStringToString = T.unpack . T.decodeUtf8

@@ -1,4 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE StrictData #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Main where
 
@@ -23,6 +25,7 @@ import qualified Network.HTTP.Client as L ( CookieJar )
 
 import Text.HandsomeSoup ( (!), css, parseHtml )
 import Text.XML.HXT.Core ( (>>>), runX )
+import System.Environment (getEnv)
 
 byteStringToString :: ByteString -> String
 byteStringToString = T.unpack . T.decodeUtf8
@@ -58,8 +61,23 @@ visitStartPage = do
 
   pure (csrfToken, csrfParam, cookies)
 
+data Config = Config
+  { userName :: String
+  , password :: String
+  , deviceName :: String
+  } deriving (Show, Eq)
+
+loadConfig :: IO Config
+loadConfig = do
+  userName <- getEnv "ROUTER_ADMIN_LOGIN"
+  password <- getEnv "ROUTER_ADMIN_PASSWORD"
+  deviceName <- getEnv "ROUTER_TARGET_DEVICE"
+  pure Config {..}
+
 main :: IO ()
 main = do
+  cfg <- loadConfig
+
   (csrfToken, csrfParam, cookie) <- visitStartPage
   putStrLn $ "csrf_token = " ++ csrfToken
   putStrLn $ "csrf_param = " ++ csrfParam

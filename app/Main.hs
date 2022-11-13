@@ -14,9 +14,8 @@ import Network.HTTP.Req
       responseStatusCode,
       runReq,
       GET(GET),
-      NoReqBody(NoReqBody), responseCookieJar )
-import Data.Aeson ()
-import Control.Monad.IO.Class ()
+      NoReqBody(NoReqBody), responseCookieJar, (/:), POST (POST), ReqBodyJson (ReqBodyJson), cookieJar )
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.ByteString as B ( ByteString )
 import qualified Data.ByteString.Char8 as BS (pack, unpack)
 import Data.Text as T ( unpack )
@@ -31,6 +30,8 @@ import Text.XML.HXT.Core ( (>>>), runX )
 import System.Environment (getEnv)
 import Data.ByteString.Builder (toLazyByteString, byteStringHex)
 import Data.ByteString.Lazy (toStrict)
+import Data.Aeson.Types (object)
+import Data.Aeson ((.=))
 
 byteStringToString :: ByteString -> String
 byteStringToString = T.unpack . T.decodeUtf8
@@ -64,8 +65,7 @@ visitStartPage = do
         (http "192.168.1.1")
         NoReqBody
         bsResponse
-        mempty -- query params, headers, explicit port number, etc.
-    let status = responseStatusCode startPageRequest
+        mempty
     let responseBody_ = byteStringToString $ responseBody startPageRequest
     let cookieJar = responseCookieJar startPageRequest
     pure (responseBody_, cookieJar)
@@ -98,15 +98,46 @@ encodePassword :: Config -> Tokens -> String
 encodePassword Config {..} Tokens {..} =
   computeHash $ userName ++ (encodeBase64 . computeHash $ password) ++ csrfParam ++ csrfToken
 
+executeLogin :: Config -> Tokens -> L.CookieJar -> IO L.CookieJar
+executeLogin config@Config {..} tokens@Tokens {..} cookies = do
+  runReq defaultHttpConfig $ do
+    let encodedPassword = encodePassword config tokens
+    let payload =
+            object
+              [ "csrf" .= object [
+                  "csrf_param" .= csrfParam,
+                  "csrf_token" .= csrfToken
+                ],
+                "data" .= object [
+                  "UserName" .= userName,
+                  "Password" .= encodedPassword,
+                  "isDestroyed" .= False,
+                  "isDestroying" .= False,
+                  "isInstance" .= True,
+                  "isObserverable" .= True
+                ]
+              ]
+    loginRequest <-
+      req
+        POST
+        (http "192.168.1.1" /: "api" /: "system" /: "user_login")
+        (ReqBodyJson payload)
+        bsResponse
+        (cookieJar cookies)
+    let responseBody_ = byteStringToString $ responseBody loginRequest
+    liftIO . putStrLn $ "Login response: " ++ responseBody_
+    let cookieJar = responseCookieJar loginRequest
+    pure cookieJar
+
 main :: IO ()
 main = do
   cfg <- loadConfig
-
-  putStrLn $ "Password hash: " ++ (encodeBase64 . computeHash $ password cfg)
-
   (tokens, cookie) <- visitStartPage
-  putStrLn $ "csrf_token = " ++ csrfToken tokens
-  putStrLn $ "csrf_param = " ++ csrfParam tokens
 
-  putStrLn $ "Password hash: " ++ encodePassword cfg tokens
+  putStrLn ""
   print cookie
+  putStrLn ""
+
+  cookies2 <- executeLogin cfg tokens cookie
+  putStrLn ""
+  print cookies2

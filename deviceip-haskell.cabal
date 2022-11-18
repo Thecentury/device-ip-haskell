@@ -31,14 +31,14 @@ executable deviceip-haskell
     -- other-extensions:
     build-depends:    
         base ^>=4.14.3.0,
-        req >=3.13.0,
         aeson >= 2.1.1.0,
+        base64-bytestring >= 1.2.1.0,
         bytestring >= 0.10.12,
-        text >= 1.2.4.1,
-        HandsomeSoup >= 0.4.2,
-        hxt >= 9.3.1.22,
-        http-client >= 0.7.13.1,
         cryptohash-sha256 >= 0.11.102.1,
-        base64-bytestring >= 1.2.1.0
+        HandsomeSoup >= 0.4.2,
+        http-client >= 0.7.13.1,
+        hxt >= 9.3.1.22,
+        req >=3.13.0,
+        text >= 1.2.4.1
     hs-source-dirs:   app
     default-language: Haskell2010

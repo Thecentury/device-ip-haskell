@@ -6,6 +6,7 @@
 module Main where
 
 import Control.Monad.IO.Class (MonadIO (liftIO))
+import Control.Monad.State
 import qualified Crypto.Hash.SHA256 as SHA256
 import Data.Aeson ((.=), FromJSON (parseJSON), ToJSON (toEncoding), genericToEncoding, defaultOptions, Options(..), genericParseJSON, decode, withObject, (.:))
 import Data.Aeson.Types (object)
@@ -58,7 +59,9 @@ data Tokens = Tokens
   , csrfParam :: !String
   } deriving (Show)
 
-visitStartPage :: IO (Tokens, L.CookieJar)
+newtype Cookies = Cookies L.CookieJar
+
+visitStartPage :: IO (Tokens, Cookies)
 visitStartPage = do
   (response, cookies) <- runReq defaultHttpConfig $ do
     startPageRequest <-
@@ -81,7 +84,7 @@ visitStartPage = do
   let csrfToken = requiredMeta "csrf_token" metaMap
   let csrfParam = requiredMeta "csrf_param" metaMap
   let tokens = Tokens {..}
-  pure (tokens, cookies)
+  pure (tokens, Cookies cookies)
 
 data Config = Config
   { userName :: !String
@@ -100,9 +103,10 @@ encodePassword :: Config -> Tokens -> String
 encodePassword Config {..} Tokens {..} =
   computeHash $ userName ++ (encodeBase64 . computeHash $ password) ++ csrfParam ++ csrfToken
 
-executeLogin :: Config -> Tokens -> L.CookieJar -> IO L.CookieJar
-executeLogin config@Config {..} tokens@Tokens {..} cookies = do
-  runReq defaultHttpConfig $ do
+executeLogin :: Config -> Tokens -> StateT Cookies IO ()
+executeLogin config@Config {..} tokens@Tokens {..} = do
+  Cookies cookies <- get
+  cookies <- liftIO $ runReq defaultHttpConfig $ do
     let encodedPassword = encodePassword config tokens
     let payload =
             object
@@ -126,10 +130,14 @@ executeLogin config@Config {..} tokens@Tokens {..} cookies = do
         (ReqBodyJson payload)
         bsResponse
         (cookieJar cookies)
-    pure . responseCookieJar $ loginResponse
+    let cookieJar = responseCookieJar loginResponse
+    pure $ Cookies cookieJar
+  put cookies
 
-visitWizardPage :: L.CookieJar -> IO L.CookieJar
-visitWizardPage cookies = runReq defaultHttpConfig $ do
+visitWizardPage :: StateT Cookies IO ()
+visitWizardPage = do
+  Cookies cookies <- get
+  cookies <- liftIO $ runReq defaultHttpConfig $ do
     wizardPageRequest <-
       req
         GET
@@ -138,7 +146,8 @@ visitWizardPage cookies = runReq defaultHttpConfig $ do
         bsResponse
         (cookieJar cookies)
     let cookieJar = responseCookieJar wizardPageRequest
-    pure cookieJar
+    pure $ Cookies cookieJar
+  put cookies
 
 cleanJsonResponse :: String -> String
 cleanJsonResponse str =
@@ -176,8 +185,10 @@ parseHostsResponse response =
     Just hosts -> hosts
     Nothing -> error "Failed to parse hosts response"
 
-loadHosts :: L.CookieJar -> IO String
-loadHosts cookies = runReq defaultHttpConfig $ do
+loadHosts :: StateT Cookies IO String
+loadHosts = do
+  Cookies cookies <- get
+  liftIO $ runReq defaultHttpConfig $ do
     hostsRequest <-
       req
         GET
@@ -188,17 +199,19 @@ loadHosts cookies = runReq defaultHttpConfig $ do
     let responseBody_ = byteStringToString $ responseBody hostsRequest
     pure responseBody_
 
+getHosts :: Config -> Tokens -> StateT Cookies IO [Host]
+getHosts config tokens = do
+  executeLogin config tokens
+  parseHostsResponse <$> loadHosts
+
 main :: IO ()
 main = do
   cfg <- loadConfig
   (tokens, cookies) <- visitStartPage
-  cookies2 <- executeLogin cfg tokens cookies
-  cookies3 <- visitWizardPage cookies2
-  hostsResponse <- loadHosts cookies3
-  let parsedHosts = parseHostsResponse hostsResponse
-  let targetHost = find (\Host {..} -> hostName == deviceName cfg) parsedHosts
-  let activeHostsCount = length . filter active $ parsedHosts
-  let onlineHosts = intercalate ", " . sort . map hostName . filter active $ parsedHosts
+  (hosts, _) <- runStateT (getHosts cfg tokens) cookies
+  let targetHost = find (\Host {..} -> hostName == deviceName cfg) hosts
+  let activeHostsCount = length . filter active $ hosts
+  let onlineHosts = intercalate ", " . sort . map hostName . filter active $ hosts
   case targetHost of
     Just Host {..} | active -> do
       putStrLn ipAddress

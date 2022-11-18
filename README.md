@@ -12,3 +12,8 @@ To add a package:
 ```shell
 cabal install <name>
 ```
+
+To update the binaries in the `~/.cabal/bin`:
+```shell
+cabal install --overwrite-policy=always
+```

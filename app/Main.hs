@@ -16,10 +16,9 @@ import qualified Data.ByteString.Char8 as BS (pack, unpack)
 import qualified Data.ByteString.Lazy.Char8 as BL (pack)
 import Data.ByteString.Lazy (toStrict)
 import Data.Char (toUpper)
-import Data.List (isPrefixOf, isSuffixOf, find, intercalate)
+import Data.List ( isPrefixOf, isSuffixOf, find, intercalate, sort )
 import Data.Text as T ( unpack, pack )
 import Data.Text.Encoding as T ( decodeUtf8, encodeUtf8 )
-import Data.Text.IO as T ()
 import GHC.Generics ( Generic )
 import qualified Network.HTTP.Client as L ( CookieJar )
 import Network.HTTP.Req
@@ -40,20 +39,19 @@ import Text.XML.HXT.Core ( (>>>), runX )
 byteStringToString :: ByteString -> String
 byteStringToString = T.unpack . T.decodeUtf8
 
+stringToByteString :: String -> ByteString
+stringToByteString = T.encodeUtf8 . T.pack
+
 requiredMeta :: String -> [(String, String)] -> String
 requiredMeta key meta = case lookup key meta of
   Just value -> value
   Nothing    -> error $ "Required meta tag not found: " ++ key
 
 computeHash :: String -> String
-computeHash s =
-  hexStr where
-    bs = BS.pack s
-    hash = SHA256.hash bs
-    hexStr = BS.unpack . toStrict . toLazyByteString . byteStringHex $ hash
+computeHash = byteStringToString . toStrict . toLazyByteString . byteStringHex . SHA256.hash . stringToByteString
 
 encodeBase64 :: String -> String
-encodeBase64 = BS.unpack . Base64.encode . BS.pack
+encodeBase64 = byteStringToString . Base64.encode . stringToByteString
 
 data Tokens = Tokens
   { csrfToken :: !String
@@ -199,8 +197,8 @@ main = do
   hostsResponse <- loadHosts cookies3
   let parsedHosts = parseHostsResponse hostsResponse
   let targetHost = find (\Host {..} -> hostName == deviceName cfg) parsedHosts
-  let activeHostsCount = length $ filter active parsedHosts
-  let onlineHosts = intercalate ", " . map hostName . filter active $ parsedHosts
+  let activeHostsCount = length . filter active $ parsedHosts
+  let onlineHosts = intercalate ", " . sort . map hostName . filter active $ parsedHosts
   case targetHost of
     Just Host {..} | active -> do
       putStrLn ipAddress
